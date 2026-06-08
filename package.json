@@ -1,0 +1,29 @@
+{
+  "name": "hijab-bot",
+  "version": "2.0.0",
+  "description": "Production-ready Telegram e-commerce bot for hijabs/scarves",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "db:migrate": "npx prisma migrate dev",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "npx prisma studio",
+    "db:reset": "npx prisma migrate reset --force",
+    "setup": "npm install && npx prisma generate && npx prisma db push && node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "dotenv": "^16.3.1",
+    "prisma": "^6.16.2",
+    "telegraf": "^4.15.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}
