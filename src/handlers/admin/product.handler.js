@@ -163,6 +163,173 @@ async function startAddProduct(ctx) {
   });
 }
 
+async function askForProductTitle(ctx, categoryId) {
+  ctx.session.adminAction = {
+    type: 'add_product',
+    step: 'title',
+    data: { categoryId },
+  };
+
+  await ctx.reply(ctx.t.prodStep3, {
+    parse_mode: 'HTML',
+    ...adminCancelKeyboard,
+  });
+}
+
+async function pickRootCategory(ctx) {
+  const categoryId = parseInt(ctx.match[1], 10);
+
+  try {
+    await ctx.answerCbQuery();
+  } catch (_) {}
+
+  const t = ctx.t;
+  const lang = getLang(ctx);
+  const action = ctx.session.adminAction;
+
+  if (!action || action.type !== 'add_product') {
+    return ctx.reply(t.prodStep1, { parse_mode: 'HTML' });
+  }
+
+  const category = await categoryService.getById(categoryId);
+  if (!category) {
+    return ctx.reply(t.categoryNotFound || 'Category not found');
+  }
+
+  const children = await categoryService.getChildren(categoryId);
+
+  if (!children.length) {
+    return askForProductTitle(ctx, categoryId);
+  }
+
+  action.step = 'pick_sub_cat';
+  action.data = { rootCategoryId: categoryId };
+
+  const buttons = children.map((cat) => [
+    Markup.button.callback(
+      `рџ“‚ ${categoryName(cat, lang)}`,
+      `admin_prod_new_subcat_${cat.id}`
+    ),
+  ]);
+
+  buttons.push([
+    Markup.button.callback(t.back, 'admin_prod_add'),
+  ]);
+
+  await ctx.reply(t.prodStep2(categoryName(category, lang)), {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard(buttons),
+  });
+}
+
+async function pickSubCategory(ctx) {
+  const categoryId = parseInt(ctx.match[1], 10);
+
+  try {
+    await ctx.answerCbQuery();
+  } catch (_) {}
+
+  const action = ctx.session.adminAction;
+
+  if (!action || action.type !== 'add_product') {
+    return ctx.reply(ctx.t.prodStep1, { parse_mode: 'HTML' });
+  }
+
+  const category = await categoryService.getById(categoryId);
+  if (!category) {
+    return ctx.reply(ctx.t.categoryNotFound || 'Category not found');
+  }
+
+  return askForProductTitle(ctx, categoryId);
+}
+
+async function handleAddProductStep(ctx) {
+  const action = ctx.session.adminAction;
+  if (!action || action.type !== 'add_product') return false;
+
+  const text = ctx.message?.text?.trim();
+  const t = ctx.t;
+
+  if (!text) return true;
+
+  action.data ||= {};
+
+  if (action.step === 'title') {
+    if (text.length < 2) {
+      await ctx.reply(t.prodNameTooShort, adminCancelKeyboard);
+      return true;
+    }
+
+    action.data.title = text;
+    action.step = 'description';
+    await ctx.reply(t.prodStep4, {
+      parse_mode: 'HTML',
+      ...adminCancelKeyboard,
+    });
+    return true;
+  }
+
+  if (action.step === 'description') {
+    action.data.description = text === '-' ? null : text;
+    action.step = 'price';
+    await ctx.reply(t.prodStep5, {
+      parse_mode: 'HTML',
+      ...adminCancelKeyboard,
+    });
+    return true;
+  }
+
+  if (action.step === 'price') {
+    if (!isPositiveInteger(text)) {
+      await ctx.reply(t.prodInvalidPrice, adminCancelKeyboard);
+      return true;
+    }
+
+    action.data.price = parseInt(text, 10);
+    action.step = 'stock';
+    await ctx.reply(t.prodStep6, {
+      parse_mode: 'HTML',
+      ...adminCancelKeyboard,
+    });
+    return true;
+  }
+
+  if (action.step === 'stock') {
+    const stock = parseInt(text, 10);
+    if (isNaN(stock) || stock < 0) {
+      await ctx.reply(t.prodInvalidStock, adminCancelKeyboard);
+      return true;
+    }
+
+    action.data.stock = stock;
+
+    try {
+      const product = await productService.create({
+        ...action.data,
+        titleUz: action.data.title,
+        titleRu: action.data.title,
+        titleEn: action.data.title,
+        descriptionUz: action.data.description,
+        descriptionRu: action.data.description,
+        descriptionEn: action.data.description,
+        photos: [],
+      });
+
+      delete ctx.session.adminAction;
+      await ctx.reply(t.prodCreated(productTitle(product, getLang(ctx))), {
+        parse_mode: 'HTML',
+        ...productActionsKeyboard(product.id, false, t),
+      });
+    } catch (error) {
+      await ctx.reply(t.errorGeneric(error.message), adminMenuKeyboard(t));
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
 // ───────────────────────────────────────────────────────────
 // HANDLE PHOTO UPLOAD
 // ───────────────────────────────────────────────────────────
@@ -503,10 +670,9 @@ module.exports = {
   confirmDeleteProduct,
   executeDeleteProduct,
 
-  // placeholders so bot doesn't crash
-  pickRootCategory: async () => {},
-  pickSubCategory: async () => {},
-  handleAddProductStep: async () => {},
+  pickRootCategory,
+  pickSubCategory,
+  handleAddProductStep,
   startEditProduct,
   showPhotoPresets: async () => {},
   usePresetForProduct: async () => {},
