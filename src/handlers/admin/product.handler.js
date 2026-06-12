@@ -185,10 +185,15 @@ async function pickRootCategory(ctx) {
 
   const t = ctx.t;
   const lang = getLang(ctx);
-  const action = ctx.session.adminAction;
+  let action = ctx.session.adminAction;
 
   if (!action || action.type !== 'add_product') {
-    return ctx.reply(t.prodStep1, { parse_mode: 'HTML' });
+    ctx.session.adminAction = {
+      type: 'add_product',
+      step: 'pick_root_cat',
+      data: {},
+    };
+    action = ctx.session.adminAction;
   }
 
   const category = await categoryService.getById(categoryId);
@@ -207,7 +212,7 @@ async function pickRootCategory(ctx) {
 
   const buttons = children.map((cat) => [
     Markup.button.callback(
-      `рџ“‚ ${categoryName(cat, lang)}`,
+      categoryName(cat, lang),
       `admin_prod_new_subcat_${cat.id}`
     ),
   ]);
@@ -229,10 +234,15 @@ async function pickSubCategory(ctx) {
     await ctx.answerCbQuery();
   } catch (_) {}
 
-  const action = ctx.session.adminAction;
+  let action = ctx.session.adminAction;
 
   if (!action || action.type !== 'add_product') {
-    return ctx.reply(ctx.t.prodStep1, { parse_mode: 'HTML' });
+    ctx.session.adminAction = {
+      type: 'add_product',
+      step: 'pick_sub_cat',
+      data: {},
+    };
+    action = ctx.session.adminAction;
   }
 
   const category = await categoryService.getById(categoryId);
@@ -296,7 +306,7 @@ async function handleAddProductStep(ctx) {
 
   if (action.step === 'stock') {
     const stock = parseInt(text, 10);
-    if (isNaN(stock) || stock < 0) {
+    if (!isPositiveInteger(text)) {
       await ctx.reply(t.prodInvalidStock, adminCancelKeyboard);
       return true;
     }
